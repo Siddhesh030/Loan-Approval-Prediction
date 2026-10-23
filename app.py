@@ -15,11 +15,12 @@ def load_model():
         except Exception as e:
             print(f"[ERROR] Failed to load model from {MODEL_PATH}: {e}")
             return None
-    print(f"[WARN] Model file '{MODEL_PATH}' not found. Using underwriting fallback engine.")
+    print(f"[WARN] Model file '{MODEL_PATH}' not found. Using fallback engine.")
     return None
 
 model = load_model()
 
+# Exact feature sequence required by XGBoost booster
 FEATURE_KEYS = [
     'no_of_dependents', 'education', 'self_employed', 'income_annum',
     'loan_amount', 'loan_term', 'cibil_score', 'residential_assets_value',
@@ -28,35 +29,64 @@ FEATURE_KEYS = [
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="emerald">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Credix AI | Enterprise Credit Decisioning Platform</title>
+    <title>Loan Approval Prediction System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     
     <style>
-        :root {
-            --slate-950: #020617;
-            --slate-900: #0f172a;
-            --slate-800: #1e293b;
-            --slate-700: #334155;
-            --slate-600: #475569;
-            --slate-400: #94a3b8;
-            --slate-200: #e2e8f0;
-            --teal-400: #2dd4bf;
-            --teal-500: #14b8a6;
-            --emerald-400: #34d399;
-            --emerald-500: #10b981;
-            --rose-400: #fb7185;
-            --rose-500: #f43f5e;
-            --amber-400: #fbbf24;
-            --indigo-500: #6366f1;
+        /* Theme Palettes */
+        :root[data-theme="emerald"] {
+            --bg-base: #061412;
+            --bg-surface: rgba(10, 31, 28, 0.8);
+            --bg-input: #04100e;
+            --accent-primary: #10b981;
+            --accent-secondary: #06b6d4;
+            --accent-glow: rgba(16, 185, 129, 0.35);
+            --border-subtle: rgba(16, 185, 129, 0.18);
+            --text-main: #f0fdf4;
+            --text-muted: #6ee7b7;
+        }
+
+        :root[data-theme="obsidian"] {
+            --bg-base: #020617;
+            --bg-surface: rgba(15, 23, 42, 0.8);
+            --bg-input: #090d16;
+            --accent-primary: #38bdf8;
+            --accent-secondary: #6366f1;
+            --accent-glow: rgba(56, 189, 248, 0.35);
             --border-subtle: rgba(255, 255, 255, 0.08);
-            --card-surface: rgba(15, 23, 42, 0.75);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        :root[data-theme="purple"] {
+            --bg-base: #0d061a;
+            --bg-surface: rgba(26, 14, 48, 0.8);
+            --bg-input: #090312;
+            --accent-primary: #a855f7;
+            --accent-secondary: #ec4899;
+            --accent-glow: rgba(168, 85, 247, 0.35);
+            --border-subtle: rgba(168, 85, 247, 0.2);
+            --text-main: #faf5ff;
+            --text-muted: #d8b4fe;
+        }
+
+        :root[data-theme="sunset"] {
+            --bg-base: #180907;
+            --bg-surface: rgba(38, 17, 13, 0.8);
+            --bg-input: #100503;
+            --accent-primary: #f97316;
+            --accent-secondary: #eab308;
+            --accent-glow: rgba(249, 115, 22, 0.35);
+            --border-subtle: rgba(249, 115, 22, 0.2);
+            --text-main: #fff7ed;
+            --text-muted: #fdba74;
         }
 
         * {
@@ -64,29 +94,30 @@ HTML_TEMPLATE = """
             margin: 0;
             padding: 0;
             font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
         }
 
         body {
-            background-color: var(--slate-950);
-            color: #ffffff;
+            background-color: var(--bg-base);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             background-image: 
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(20, 184, 166, 0.15), transparent),
-                radial-gradient(circle at 100% 100%, rgba(99, 102, 241, 0.08), transparent 30%);
+                radial-gradient(circle at 10% 10%, var(--accent-glow), transparent 35%),
+                radial-gradient(circle at 90% 90%, rgba(99, 102, 241, 0.08), transparent 35%);
         }
 
-        /* Top Navigation Cockpit */
+        /* Cockpit Header */
         .navbar {
-            height: 70px;
+            height: 72px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 2rem;
             border-bottom: 1px solid var(--border-subtle);
-            background: rgba(2, 6, 23, 0.85);
-            backdrop-filter: blur(12px);
+            background: rgba(2, 6, 23, 0.6);
+            backdrop-filter: blur(14px);
             position: sticky;
             top: 0;
             z-index: 50;
@@ -95,46 +126,74 @@ HTML_TEMPLATE = """
         .brand-cluster {
             display: flex;
             align-items: center;
-            gap: 0.85rem;
+            gap: 0.9rem;
         }
 
         .brand-badge {
-            width: 36px;
-            height: 36px;
+            width: 40px;
+            height: 40px;
             border-radius: 10px;
-            background: linear-gradient(135deg, var(--teal-400), var(--indigo-500));
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.2rem;
+            color: #000;
             font-weight: 800;
-            color: var(--slate-950);
-            box-shadow: 0 0 20px rgba(45, 212, 191, 0.35);
+            box-shadow: 0 0 20px var(--accent-glow);
         }
 
         .brand-title {
             font-size: 1.15rem;
             font-weight: 800;
-            letter-spacing: -0.02em;
+            letter-spacing: -0.01em;
+            color: var(--text-main);
         }
 
         .brand-subtitle {
             font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            color: var(--slate-400);
+            color: var(--text-muted);
         }
 
         .nav-meta {
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
+        .theme-selector {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-subtle);
+            padding: 0.35rem 0.65rem;
+            border-radius: 30px;
+        }
+
+        .theme-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+        }
+
+        .theme-dot:hover { transform: scale(1.2); }
+        .theme-dot.active { border-color: #fff; transform: scale(1.1); }
+        .dot-emerald { background: linear-gradient(135deg, #10b981, #06b6d4); }
+        .dot-obsidian { background: linear-gradient(135deg, #38bdf8, #6366f1); }
+        .dot-purple { background: linear-gradient(135deg, #a855f7, #ec4899); }
+        .dot-sunset { background: linear-gradient(135deg, #f97316, #eab308); }
+
         .currency-switch {
-            background: var(--slate-900);
+            background: var(--bg-input);
             border: 1px solid var(--border-subtle);
             border-radius: 8px;
-            color: var(--slate-200);
+            color: var(--text-main);
             padding: 0.4rem 0.75rem;
             font-size: 0.8rem;
             font-weight: 600;
@@ -142,36 +201,9 @@ HTML_TEMPLATE = """
             cursor: pointer;
         }
 
-        .status-pill {
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-            font-size: 0.75rem;
-            padding: 0.3rem 0.75rem;
-            border-radius: 9999px;
-            background: rgba(45, 212, 191, 0.1);
-            color: var(--teal-400);
-            border: 1px solid rgba(45, 212, 191, 0.25);
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .pulse-dot {
-            width: 6px;
-            height: 6px;
-            background: var(--teal-400);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { transform: scale(0.9); opacity: 0.6; }
-            50% { transform: scale(1.3); opacity: 1; }
-            100% { transform: scale(0.9); opacity: 0.6; }
-        }
-
-        /* Workspace Grid */
+        /* Content Grid */
         .workspace {
-            max-width: 1540px;
+            max-width: 1480px;
             width: 100%;
             margin: 0 auto;
             padding: 2rem;
@@ -181,22 +213,23 @@ HTML_TEMPLATE = """
             flex: 1;
         }
 
-        @media (max-width: 1120px) {
+        @media (max-width: 1100px) {
             .workspace {
                 grid-template-columns: 1fr;
-                padding: 1rem;
+                padding: 1.25rem;
             }
         }
 
         .surface-card {
-            background: var(--card-surface);
+            background: var(--bg-surface);
             border: 1px solid var(--border-subtle);
-            border-radius: 16px;
-            padding: 1.75rem;
+            border-radius: 18px;
+            padding: 1.85rem;
             backdrop-filter: blur(16px);
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
         }
 
         .card-header {
@@ -208,29 +241,26 @@ HTML_TEMPLATE = """
         }
 
         .card-heading {
-            font-size: 1rem;
+            font-size: 1.05rem;
             font-weight: 700;
             display: flex;
             align-items: center;
             gap: 0.65rem;
-            color: var(--slate-200);
+            color: var(--text-main);
         }
 
-        .card-heading i {
-            color: var(--teal-400);
-        }
+        .card-heading i { color: var(--accent-primary); }
 
-        /* Form Subsections */
         .field-group-title {
             font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            color: var(--teal-400);
+            color: var(--accent-primary);
             margin-bottom: 0.85rem;
             display: flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.45rem;
         }
 
         .grid-2 {
@@ -240,9 +270,7 @@ HTML_TEMPLATE = """
         }
 
         @media (max-width: 600px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
+            .grid-2 { grid-template-columns: 1fr; }
         }
 
         .input-block {
@@ -254,7 +282,7 @@ HTML_TEMPLATE = """
         .input-block label {
             font-size: 0.75rem;
             font-weight: 600;
-            color: var(--slate-400);
+            color: var(--text-muted);
         }
 
         .input-shell {
@@ -266,40 +294,34 @@ HTML_TEMPLATE = """
         .input-shell i {
             position: absolute;
             left: 0.85rem;
-            color: var(--slate-600);
+            color: var(--text-muted);
             font-size: 0.85rem;
             pointer-events: none;
-            transition: color 0.2s;
         }
 
         .input-shell input, .input-shell select {
             width: 100%;
-            background: var(--slate-900);
+            background: var(--bg-input);
             border: 1px solid var(--border-subtle);
             border-radius: 10px;
-            color: #ffffff;
+            color: var(--text-main);
             font-size: 0.85rem;
             padding: 0.65rem 0.85rem 0.65rem 2.4rem;
             outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
             font-family: 'JetBrains Mono', monospace;
         }
 
         .input-shell input:focus, .input-shell select:focus {
-            border-color: var(--teal-400);
-            box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.15);
-        }
-
-        .input-shell input:focus + i {
-            color: var(--teal-400);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
         .btn-evaluate {
-            background: linear-gradient(135deg, var(--teal-400), var(--teal-500));
-            color: var(--slate-950);
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #000;
             font-size: 0.95rem;
             font-weight: 800;
-            padding: 0.95rem 1.5rem;
+            padding: 1rem;
             border-radius: 12px;
             border: none;
             cursor: pointer;
@@ -307,51 +329,48 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: center;
             gap: 0.6rem;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 4px 20px var(--accent-glow);
             margin-top: 0.5rem;
-            box-shadow: 0 4px 20px rgba(45, 212, 191, 0.25);
         }
 
         .btn-evaluate:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(45, 212, 191, 0.35);
+            filter: brightness(1.1);
         }
 
-        /* Decision Panel (Right) */
+        /* Verdict Box */
         .verdict-banner {
             border-radius: 14px;
             padding: 1.5rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border-subtle);
-            transition: all 0.4s ease;
         }
 
         .verdict-banner.approved {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.7));
-            border-color: var(--emerald-400);
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(0, 0, 0, 0.4));
+            border-color: #10b981;
         }
 
         .verdict-banner.rejected {
-            background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(15, 23, 42, 0.7));
-            border-color: var(--rose-400);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(0, 0, 0, 0.4));
+            border-color: #ef4444;
         }
 
         .verdict-title-sub {
             font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.1em;
-            color: var(--slate-400);
+            color: var(--text-muted);
         }
 
         .verdict-badge {
             font-size: 1.5rem;
             font-weight: 800;
-            letter-spacing: -0.02em;
-            color: var(--slate-200);
-            margin-top: 0.2rem;
+            color: var(--text-main);
+            margin-top: 0.25rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -362,12 +381,12 @@ HTML_TEMPLATE = """
             font-family: 'JetBrains Mono', monospace;
             padding: 0.35rem 0.65rem;
             border-radius: 6px;
-            background: var(--slate-800);
+            background: rgba(0, 0, 0, 0.3);
             border: 1px solid var(--border-subtle);
-            color: var(--slate-200);
+            color: var(--text-muted);
         }
 
-        /* Underwriting Scoreboard */
+        /* Scoreboard */
         .scoreboard {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -375,25 +394,23 @@ HTML_TEMPLATE = """
         }
 
         @media (max-width: 600px) {
-            .scoreboard {
-                grid-template-columns: 1fr;
-            }
+            .scoreboard { grid-template-columns: 1fr; }
         }
 
         .score-tile {
-            background: rgba(2, 6, 23, 0.6);
+            background: rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border-subtle);
             border-radius: 12px;
             padding: 1rem;
             display: flex;
             flex-direction: column;
-            gap: 0.25rem;
+            gap: 0.3rem;
         }
 
         .score-label {
             font-size: 0.7rem;
             text-transform: uppercase;
-            color: var(--slate-400);
+            color: var(--text-muted);
             font-weight: 600;
         }
 
@@ -401,20 +418,20 @@ HTML_TEMPLATE = """
             font-size: 1.25rem;
             font-weight: 700;
             font-family: 'JetBrains Mono', monospace;
-            color: var(--teal-400);
+            color: var(--accent-primary);
         }
 
-        /* Asset Breakdown Stacked Visualizer */
+        /* Visual Stack Bar */
         .asset-stack-container {
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
+            gap: 0.8rem;
         }
 
         .stack-bar {
             height: 12px;
             width: 100%;
-            background: var(--slate-900);
+            background: var(--bg-input);
             border-radius: 6px;
             overflow: hidden;
             display: flex;
@@ -443,7 +460,7 @@ HTML_TEMPLATE = """
             justify-content: space-between;
             padding: 0.5rem 0.75rem;
             border-radius: 8px;
-            background: rgba(2, 6, 23, 0.4);
+            background: rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border-subtle);
         }
 
@@ -451,7 +468,7 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             gap: 0.45rem;
-            color: var(--slate-400);
+            color: var(--text-muted);
         }
 
         .dot {
@@ -463,22 +480,22 @@ HTML_TEMPLATE = """
         .legend-amount {
             font-family: 'JetBrains Mono', monospace;
             font-weight: 600;
+            color: var(--text-main);
         }
 
-        /* Policy Narrative Log */
         .audit-box {
-            background: var(--slate-900);
+            background: rgba(0, 0, 0, 0.25);
             border: 1px solid var(--border-subtle);
             border-radius: 12px;
             padding: 1rem;
             font-size: 0.75rem;
-            color: var(--slate-400);
+            color: var(--text-muted);
             line-height: 1.6;
         }
 
         .audit-header {
             font-weight: 700;
-            color: var(--slate-200);
+            color: var(--text-main);
             margin-bottom: 0.35rem;
             display: flex;
             align-items: center;
@@ -488,22 +505,26 @@ HTML_TEMPLATE = """
 </head>
 <body>
 
-    <!-- Cockpit Navigation -->
     <header class="navbar">
         <div class="brand-cluster">
-            <div class="brand-badge">C</div>
+            <div class="brand-badge"><i class="fa-solid fa-scale-balanced"></i></div>
             <div>
-                <div class="brand-title">CREDIX <span style="color: var(--teal-400);">AI</span></div>
-                <div class="brand-subtitle">Risk Underwriting Engine</div>
+                <div class="brand-title">Loan Approval Prediction System</div>
+                <div class="brand-subtitle">Automated Risk & Credit Evaluation</div>
             </div>
         </div>
 
         <div class="nav-meta">
-            <div class="status-pill">
-                <div class="pulse-dot"></div>
-                ENGINE ACTIVE v3.2
+            <!-- Dynamic Theme Selector -->
+            <div class="theme-selector">
+                <span style="font-size: 0.7rem; color: var(--text-muted); margin-right: 4px; font-weight: 700;">THEME</span>
+                <div class="theme-dot dot-emerald active" onclick="setTheme('emerald')" title="Emerald Neon"></div>
+                <div class="theme-dot dot-obsidian" onclick="setTheme('obsidian')" title="Obsidian Cyan"></div>
+                <div class="theme-dot dot-purple" onclick="setTheme('purple')" title="Royal Purple"></div>
+                <div class="theme-dot dot-sunset" onclick="setTheme('sunset')" title="Sunset Gold"></div>
             </div>
 
+            <!-- Currency Switcher -->
             <select id="currencySelect" class="currency-switch" onchange="applyCurrencyChange()">
                 <option value="$" data-rate="1">USD ($)</option>
                 <option value="₹" data-rate="83.5">INR (₹)</option>
@@ -513,24 +534,22 @@ HTML_TEMPLATE = """
         </div>
     </header>
 
-    <!-- Operational Grid -->
     <main class="workspace">
         
-        <!-- Left: Form Input Terminal -->
+        <!-- Input Terminal -->
         <section class="surface-card">
             <div class="card-header">
                 <span class="card-heading">
-                    <i class="fa-solid fa-file-invoice-dollar"></i> Applicant Parameters
+                    <i class="fa-solid fa-sliders"></i> Applicant Risk Parameters
                 </span>
-                <span style="font-size: 0.7rem; color: var(--slate-400);">11-Point Verification</span>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">Institutional Verification</span>
             </div>
 
             <form id="loanForm" style="display: flex; flex-direction: column; gap: 1.25rem;">
                 
-                <!-- Primary Profile -->
                 <div>
                     <div class="field-group-title">
-                        <i class="fa-solid fa-user-shield"></i> Demographics & Career
+                        <i class="fa-solid fa-user-check"></i> Demographic & Credit Score
                     </div>
                     <div class="grid-2">
                         <div class="input-block">
@@ -542,47 +561,46 @@ HTML_TEMPLATE = """
                         </div>
 
                         <div class="input-block">
-                            <label>Education Level</label>
+                            <label>Education Status</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-graduation-cap"></i>
                                 <select name="education">
-                                    <option value="1">Graduate Degree</option>
-                                    <option value="0">Non-Graduate</option>
+                                    <option value="1">Graduate</option>
+                                    <option value="0">Not Graduate</option>
                                 </select>
                             </div>
                         </div>
 
                         <div class="input-block">
-                            <label>Employment Structure</label>
+                            <label>Self Employed</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-briefcase"></i>
                                 <select name="self_employed">
-                                    <option value="0">Salaried Professional</option>
-                                    <option value="1">Self Employed / Business</option>
+                                    <option value="0">No (Salaried)</option>
+                                    <option value="1">Yes</option>
                                 </select>
                             </div>
                         </div>
 
                         <div class="input-block">
-                            <label>Credit Bureau Score (CIBIL)</label>
+                            <label>CIBIL Bureau Score (300 - 900)</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-gauge-high"></i>
-                                <input type="number" name="cibil_score" min="300" max="900" value="745" required>
+                                <input type="number" name="cibil_score" min="300" max="900" value="750" required>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Loan Facility Terms -->
                 <div>
                     <div class="field-group-title">
-                        <i class="fa-solid fa-landmark"></i> Loan Request Facility
+                        <i class="fa-solid fa-hand-holding-dollar"></i> Loan Terms & Income
                     </div>
                     <div class="grid-2">
                         <div class="input-block">
-                            <label>Annual Declared Income (<span class="curr-sym">$</span>)</label>
+                            <label>Annual Gross Income (<span class="curr-sym">$</span>)</label>
                             <div class="input-shell">
-                                <i class="fa-solid fa-money-bill-trend-up"></i>
+                                <i class="fa-solid fa-money-bill-wave"></i>
                                 <input type="number" name="income_annum" step="1000" value="6500000" required>
                             </div>
                         </div>
@@ -590,40 +608,39 @@ HTML_TEMPLATE = """
                         <div class="input-block">
                             <label>Requested Loan Principal (<span class="curr-sym">$</span>)</label>
                             <div class="input-shell">
-                                <i class="fa-solid fa-hand-holding-dollar"></i>
+                                <i class="fa-solid fa-file-invoice-dollar"></i>
                                 <input type="number" name="loan_amount" step="1000" value="12000000" required>
                             </div>
                         </div>
 
                         <div class="input-block" style="grid-column: span 2;">
-                            <label>Tenure Period (Years)</label>
+                            <label>Loan Duration (Years)</label>
                             <div class="input-shell">
-                                <i class="fa-solid fa-clock-rotate-left"></i>
+                                <i class="fa-solid fa-clock"></i>
                                 <input type="number" name="loan_term" min="1" max="30" value="10" required>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Collateral Portfolio -->
                 <div>
                     <div class="field-group-title">
-                        <i class="fa-solid fa-vault"></i> Declared Asset Portfolio (<span class="curr-sym">$</span>)
+                        <i class="fa-solid fa-building-columns"></i> Collateral Asset Base (<span class="curr-sym">$</span>)
                     </div>
                     <div class="grid-2">
                         <div class="input-block">
                             <label>Residential Real Estate</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-house"></i>
-                                <input type="number" name="residential_assets_value" value="4500000" required>
+                                <input type="number" name="residential_assets_value" value="4000000" required>
                             </div>
                         </div>
 
                         <div class="input-block">
-                            <label>Commercial Properties</label>
+                            <label>Commercial Real Estate</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-city"></i>
-                                <input type="number" name="commercial_assets_value" value="3000000" required>
+                                <input type="number" name="commercial_assets_value" value="2500000" required>
                             </div>
                         </div>
 
@@ -631,27 +648,27 @@ HTML_TEMPLATE = """
                             <label>Luxury Holdings</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-gem"></i>
-                                <input type="number" name="luxury_assets_value" value="7000000" required>
+                                <input type="number" name="luxury_assets_value" value="8000000" required>
                             </div>
                         </div>
 
                         <div class="input-block">
-                            <label>Bank Liquidity & Deposits</label>
+                            <label>Bank Liquidity & Reserves</label>
                             <div class="input-shell">
                                 <i class="fa-solid fa-piggy-bank"></i>
-                                <input type="number" name="bank_asset_value" value="5500000" required>
+                                <input type="number" name="bank_asset_value" value="5000000" required>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <button type="submit" class="btn-evaluate" id="btnSubmit">
-                    <i class="fa-solid fa-shield-halved"></i> Run Instant Underwriting Evaluation
+                    <i class="fa-solid fa-bolt"></i> Evaluate Loan Eligibility
                 </button>
             </form>
         </section>
 
-        <!-- Right: Executive Risk Cockpit -->
+        <!-- Evaluation Results Terminal -->
         <section class="surface-card">
             <div class="card-header">
                 <span class="card-heading">
@@ -660,21 +677,19 @@ HTML_TEMPLATE = """
                 <span class="tier-chip" id="tierChip">TIER: PENDING</span>
             </div>
 
-            <!-- Approval Banner -->
             <div class="verdict-banner" id="verdictBanner">
                 <div>
                     <div class="verdict-title-sub">Underwriting Status</div>
                     <div class="verdict-badge" id="verdictText">
-                        <i class="fa-regular fa-hourglass-half"></i> Ready to Assess
+                        <i class="fa-regular fa-hourglass-half"></i> Ready for Analysis
                     </div>
                 </div>
                 <div style="text-align: right;">
                     <div class="verdict-title-sub">Approval Confidence</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--teal-400);" id="confScore">--%</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; color: var(--accent-primary);" id="confScore">--%</div>
                 </div>
             </div>
 
-            <!-- Scoreboard -->
             <div class="scoreboard">
                 <div class="score-tile">
                     <span class="score-label">Debt-to-Income</span>
@@ -690,9 +705,8 @@ HTML_TEMPLATE = """
                 </div>
             </div>
 
-            <!-- Collateral Mix -->
             <div class="asset-stack-container">
-                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--slate-400);">
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
                     <span>Collateral Portfolio Allocation</span>
                     <span id="assetSummaryLabel">0 assets</span>
                 </div>
@@ -710,7 +724,7 @@ HTML_TEMPLATE = """
                         <span class="legend-amount" id="amtRes">$0</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-tag"><div class="dot segCom"></div> Commercial</div>
+                        <div class="legend-tag"><div class="dot seg-com"></div> Commercial</div>
                         <span class="legend-amount" id="amtCom">$0</span>
                     </div>
                     <div class="legend-item">
@@ -718,19 +732,18 @@ HTML_TEMPLATE = """
                         <span class="legend-amount" id="amtLux">$0</span>
                     </div>
                     <div class="legend-item">
-                        <div class="legend-tag"><div class="dot seg-bnk"></div> Bank Reserves</div>
+                        <div class="legend-tag"><div class="dot seg-bnk"></div> Bank Liquidity</div>
                         <span class="legend-amount" id="amtBnk">$0</span>
                     </div>
                 </div>
             </div>
 
-            <!-- System Narrative -->
             <div class="audit-box">
                 <div class="audit-header">
-                    <i class="fa-solid fa-clipboard-check" style="color: var(--teal-400);"></i> Policy Decision Remarks
+                    <i class="fa-solid fa-clipboard-check" style="color: var(--accent-primary);"></i> Decision Audit Remarks
                 </div>
                 <p id="policyNotes">
-                    Run an underwriting assessment using the form on the left. The engine analyzes CIBIL parameters, repayment leverage, and collateral stability to render an immediate institutional decision.
+                    Run the evaluation form to generate the assessment. The underlying XGBoost gradient booster inspects repayment capacity, CIBIL health, and asset solvency ratios.
                 </p>
             </div>
         </section>
@@ -739,6 +752,13 @@ HTML_TEMPLATE = """
 
     <script>
         let cachedData = null;
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.querySelectorAll('.theme-dot').forEach(d => d.classList.remove('active'));
+            const activeDot = document.querySelector(`.dot-${theme}`);
+            if (activeDot) activeDot.classList.add('active');
+        }
 
         function applyCurrencyChange() {
             const sym = document.getElementById('currencySelect').value;
@@ -764,16 +784,16 @@ HTML_TEMPLATE = """
 
             if (res.status === 'Approved') {
                 banner.classList.add('approved');
-                vText.innerHTML = '<i class="fa-solid fa-circle-check" style="color: var(--emerald-400);"></i> Approved';
+                vText.innerHTML = '<i class="fa-solid fa-circle-check" style="color: #10b981;"></i> Loan Approved';
                 tierChip.innerText = res.probability >= 0.85 ? 'TIER A (PRIME)' : 'TIER B (MODERATE)';
-                tierChip.style.color = 'var(--emerald-400)';
-                notes.innerText = `Facility cleared under standard policy rules. Collateral covers the credit requirement adequately with a Debt-to-Income factor of ${res.dti}x.`;
+                tierChip.style.color = '#10b981';
+                notes.innerText = `Facility cleared under standard lending policy rules. Applicant satisfies coverage thresholds with a Debt-to-Income factor of ${res.dti}x.`;
             } else {
                 banner.classList.add('rejected');
-                vText.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color: var(--rose-400);"></i> Declined';
+                vText.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color: #ef4444;"></i> Loan Rejected';
                 tierChip.innerText = 'TIER C (HIGH RISK)';
-                tierChip.style.color = 'var(--rose-400)';
-                notes.innerText = `Credit profile failed policy threshold criteria. Elevated leverage risk (DTI ${res.dti}x) or adverse score parameters detected. Manual supervisor override required.`;
+                tierChip.style.color = '#ef4444';
+                notes.innerText = `Applicant failed risk acceptance criteria. High leverage ratio (DTI ${res.dti}x) or adverse bureau score detected.`;
             }
 
             document.getElementById('confScore').innerText = Math.round(res.probability * 100) + '%';
@@ -781,7 +801,6 @@ HTML_TEMPLATE = """
             document.getElementById('metricCoverage').innerText = res.coverage + 'x';
             document.getElementById('metricNetAssets').innerText = formatCompact(res.total_assets, sym);
 
-            // Asset distribution segments
             const b = res.assets_breakdown;
             const tot = Math.max(res.total_assets, 1);
 
@@ -800,7 +819,7 @@ HTML_TEMPLATE = """
         document.getElementById('loanForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('btnSubmit');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing Underwriting Query...';
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing Evaluation...';
             btn.disabled = true;
 
             const formData = new FormData(e.target);
@@ -820,9 +839,9 @@ HTML_TEMPLATE = """
                 }
             } catch (err) {
                 console.error(err);
-                alert('Connection failure contacting prediction endpoint.');
+                alert('Failed to connect to the prediction API.');
             } finally {
-                btn.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Run Instant Underwriting Evaluation';
+                btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Evaluate Loan Eligibility';
                 btn.disabled = false;
             }
         });
@@ -855,7 +874,7 @@ def predict():
             input_array = np.array([features])
             raw_pred = int(model.predict(input_array)[0])
             
-            # 0 corresponds to Approved in the model tree schema
+            # Binary logistic mapping: 0 corresponds to Approved in the model[cite: 1, 2]
             is_approved = (raw_pred == 0)
 
             if hasattr(model, "predict_proba"):
